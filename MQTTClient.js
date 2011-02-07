@@ -100,8 +100,8 @@ openSession = function (id) {
     this.sessionSend = true;
     sys.puts('Connect as :'+id+'\n');
     
-    //publish('/node', 'here is nodejs');
-    //subscribe('/mirror');
+    publish('/node', 'here is nodejs');
+    subscribe('/mirror');
 };
 
 
@@ -123,7 +123,7 @@ subscribe = function (sub_topic) {
 	buffer[i++] = 0;
 	buffer[i++] = sub_topic.length;
 	for (var j = 0; j < sub_topic.length; j++) {
-		buffer[i++] = sub_topic[j];
+		buffer[i++] = sub_topic.charCodeAt(j);
     }
 	buffer[i++] = 0;
     
@@ -179,4 +179,3 @@ MQTTClient.prototype.disconnect = function () {
 	this.conn.write(0xe0, encoding="utf8");
 	this.conn.write(0x00, encoding="utf8");
 };
-
