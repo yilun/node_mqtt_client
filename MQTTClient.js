@@ -11,7 +11,7 @@ var crlf = '\r\n';
 
 var MQTTCONNECT = 0x10;
 var MQTTPUBLISH = 0x30;
-var MQTTSUBSCRIBE = 0x80;
+var MQTTSUBSCRIBE = 8<<4;
 
 var KEEPALIVE = 15000;
 
