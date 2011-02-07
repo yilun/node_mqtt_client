@@ -30,9 +30,8 @@ function MQTTClient(port, host) {
     var self = this;
 
     this.conn.addListener('data', function (data) {
-        sys.puts('Data received:'+data+'\n');
         if(!this.sessionOpened){
-            sys.puts("len:"+data.length+' @3'+data.charCodeAt(3)+'||');
+            sys.puts("len:"+data.length+' @3:'+data.charCodeAt(3)+'\n');
             if(data.length==4 && data.charCodeAt(3)==0){
                 this.sessionOpened = true;
                 sys.puts("Session opend\n");
@@ -41,8 +40,11 @@ function MQTTClient(port, host) {
                 //this.conn.destroy();
                 return;
             }
+        } else {
+            //sys.puts('len:' + data.length+' Data received:'+data+'\n');
+            var buf = new Buffer(data);
+            onData(buf);
         }
-      
     });
 
     this.conn.addListener('connect', function () {
@@ -167,6 +169,38 @@ publish = function (pub_topic, payload) {
 	
     this.conn.write(buffer, encoding="utf8");
 };
+
+onData = function(data){
+    var type = data[0]>>4;
+    sys.puts('\n0:'+type);
+    sys.puts('1:'+data[1]);
+    sys.puts('2:'+data[2]);
+    sys.puts('3:'+data[3]);
+    if (type == 3) { // PUBLISH
+        var tl = data[3]+data[2]; //<<4
+        sys.puts(tl);
+        var topic = new Buffer(tl);
+        for(var i = 0; i < tl; i++){
+            topic[i] = data[i+4];
+        }
+        if(tl+4 <= data.length){
+            var payload = data.slice(tl+4, data.length);
+            sys.puts("Receive on Topic:"+topic);
+            sys.puts("Payload:"+payload+'\n');
+        }
+    } else if (type == 12) { // PINGREG -- Ask for alive
+        //Send [208, 0] to server
+        this.conn.write(0xd0, encoding="utf8");
+        this.conn.write(0x00, encoding="utf8");
+        sys.puts('Send 208 0');
+        var packet208 = '';
+        packet208[0] = 0xd0;
+        packet208[1] = 0x00;
+        this.conn.write(packet208, encoding="utf8");
+        //lastActivity = timer.read_ms();
+    }
+
+}
 
 MQTTClient.prototype.live = function () {
 	//Send [192, 0] to server
