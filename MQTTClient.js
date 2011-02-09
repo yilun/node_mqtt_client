@@ -1,63 +1,81 @@
 /**
   *This is a simple MQTT cient on node.js
-  *Author: Fan Yilun @CEIT @08 FEB 2011
+  *Author: Fan Yilun @CEIT @10 FEB 2011
   */
 var sys = require('sys');
 var net = require('net');
 var EventEmitter = require('events').EventEmitter;
 
-var tab = '\t';
-var crlf = '\r\n';
-
 var MQTTCONNECT = 0x10;
 var MQTTPUBLISH = 0x30;
-var MQTTSUBSCRIBE = 8<<4;
+var MQTTSUBSCRIBE = 0x80; //8<<4;
 
 var KEEPALIVE = 15000;
 
-var client = MQTTClient();
+//Testing
+//204.146.213.96
+//127.0.0.1
+//var client = Client(1883, '127.0.0.1', 'mirror'); 
 
-function MQTTClient(port, host) {
-    EventEmitter.call(this);
+function MQTTClient(port, host, clientID) {
+    //EventEmitter.call(this);
 
     this.connected = false;
     this.sessionSend = false;
     this.sessionOpened = false;
+    this.id = clientID;
 
-    this.conn = net.createConnection(port || 1883, host || '127.0.0.1');
+    //this.conn = net.createConnection(port || 1883, host || '127.0.0.1');
+    this.conn = net.createConnection(port, host);
     this.conn.setEncoding('utf8');
   
     var self = this;
+    
+    //Set timer
+    self.timeout = setTimeout(function() {
+        self.timeUp();
+    }, 25000);
 
-    this.conn.addListener('data', function (data) {
-        if(!this.sessionOpened){
-            sys.puts("len:"+data.length+' @3:'+data.charCodeAt(3)+'\n');
+    self.conn.addListener('data', function (data) {
+        if(!self.sessionOpened){
+            //sys.puts("len:"+data.length+' @3:'+data.charCodeAt(3)+'\n');
             if(data.length==4 && data.charCodeAt(3)==0){
-                this.sessionOpened = true;
+                self.sessionOpened = true;
                 sys.puts("Session opend\n");
+                self.emit("sessionOpened");
+                
+                //reset timer
+                clearTimeout(self.timeout);
+                self.timeout = setTimeout(function() {
+                    self.timeUp();
+                }, 3000);
             }else{
-                //this.conn.end();
+                clearTimeout(self.timeout);
+                self.emit("openSessionFailed");
+                self.conn.end();
                 //this.conn.destroy();
                 return;
             }
         } else {
             //sys.puts('len:' + data.length+' Data received:'+data+'\n');
-            var buf = new Buffer(data);
-            onData(buf);
+            if(data.length > 2){
+                var buf = new Buffer(data);
+                self.onData(buf);
+            }
         }
     });
 
-    this.conn.addListener('connect', function () {
-        sys.puts('connected\n');
-        this.connected = true;
+    self.conn.addListener('connect', function () {
+        //sys.puts('connected\n');
+        self.connected = true;
         //Once connected, send open stream to broker
-        openSession('mbed');
+        self.openSession(self.id);
     });
   
-    this.conn.addListener('end', function() {
-        this.connected = false;
-        this.sessionSend = false;
-        this.sessionOpened = false;
+    self.conn.addListener('end', function() {
+        self.connected = false;
+        self.sessionSend = false;
+        self.sessionOpened = false;
         sys.puts('Connection closed by broker');
     });
 }
@@ -65,8 +83,19 @@ function MQTTClient(port, host) {
 sys.inherits(MQTTClient, EventEmitter);
 exports.MQTTClient = MQTTClient;
 
-
-openSession = function (id) {
+MQTTClient.prototype.timeUp = function(){
+        if(this.connected && this.sessionOpened){
+            //sys.puts('25s keep alive');
+            this.live();
+        } else if (!this.connected ){
+            sys.puts('MQTT connect to server time out');
+            this.emit("connectTimeOut");
+        } else {
+            sys.puts('Unknow state');
+        }
+    };
+    
+MQTTClient.prototype.openSession = function (id) {
 
 	var i = 0;
     var buffer = new Buffer(16+id.length);
@@ -96,86 +125,104 @@ openSession = function (id) {
         buffer[i++] = id.charCodeAt(n); //Convert string to utf8
 	}
     
-    sys.puts(buffer.toString('utf8',0, 16)+'  '+buffer.length);
-    this.conn.write(buffer, encoding="utf8");
+    //sys.puts(buffer.toString('utf8',0, 16)+'  '+buffer.length);
+    this.conn.write(buffer, encoding="ascii");
 
     this.sessionSend = true;
-    sys.puts('Connect as :'+id+'\n');
+    sys.puts('Connected as :'+id+'\n');
     
-    publish('/node', 'here is nodejs');
-    subscribe('/mirror');
+    //publish('node', 'here is nodejs');
+    //this.subscribe('mirror');
 };
 
 
 /*subscribes to topics */
-subscribe = function (sub_topic) {
-
-    var i = 0;
-	var buffer = new Buffer(7+sub_topic.length);;
+MQTTClient.prototype.subscribe = function (sub_topic) {
+	if(this.connected){
+    	var i = 0;
+		var buffer = new Buffer(7+sub_topic.length);;
     
-	//fixed header
-	buffer[i++] = MQTTSUBSCRIBE;
-	buffer[i++] = 5 + sub_topic.length;
+		//fixed header
+		buffer[i++] = MQTTSUBSCRIBE;
+		buffer[i++] = 5 + sub_topic.length;
 
-	//varibale header
-	buffer[i++] = 0;
-	buffer[i++] = 10; //message id
+		//varibale header
+		buffer[i++] = 0x00;
+		buffer[i++] = 0x0a; //message id
 
-	//payload
-	buffer[i++] = 0;
-	buffer[i++] = sub_topic.length;
-	for (var j = 0; j < sub_topic.length; j++) {
-		buffer[i++] = sub_topic.charCodeAt(j);
+		//payload
+		buffer[i++] = 0x00;
+		buffer[i++] = sub_topic.length;
+	
+		for (var n = 0; n < sub_topic.length; n++) {
+			buffer[i++] = sub_topic.charCodeAt(n);
+    	}
+		buffer[i++] = 0x00;
+    
+    	//sys.puts(7+sub_topic.length);
+    	sys.puts('Subcribe to:'+sub_topic);
+    	//sys.puts("Subscribe send len:"+buffer.length+'\n');
+    
+		this.conn.write(buffer, encoding="ascii");
+    
+   	 	//reset timer
+    	var cc = this;
+    	clearTimeout(this.timeout);
+    	this.timeout = setTimeout(function() {
+        	cc.timeUp();
+    	}, 25000);
     }
-	buffer[i++] = 0;
-    
-    sys.puts('Subcribe to:'+sub_topic);
-    sys.puts("Subscribe send len:"+buffer.length+'\n');
-    
-	this.conn.write(buffer, encoding="utf8");
 };
 
 /*publishes to topics*/
-publish = function (pub_topic, payload) {
-
-	var i = 0, n = 0;
-    var var_header = new Buffer(3+pub_topic.length);
-    
-    //Variable header
-	//Assume payload length no longer than 128
-    var_header[i++] = 0;
-    var_header[i++] = pub_topic.length;
-	for (n = 0; n < pub_topic.length; n++) {
-		var_header[i++] = pub_topic.charCodeAt(n);
-    }
-	var_header[i++] = 0;
-    
-	i = 0;
-    var buffer = new Buffer(2+var_header.length+payload.length);
-    
-	//Fix header
-	buffer[i++] = MQTTPUBLISH;
-	buffer[i++] = payload.length + var_header.length;
-
-	for (n = 0; n < var_header.length; n++) {
-		buffer[i++] = var_header[n];
-    }
-	for (n = 0; n < payload.length; n++) { //Insert payloads
-		buffer[i++] = payload.charCodeAt(n);
-    }
-    
-    sys.puts("Publish: "+pub_topic+' -- '+payload);
-    sys.puts("Publish len:"+buffer.length+'\n');
+MQTTClient.prototype.publish = function (pub_topic, payload) {
 	
-    this.conn.write(buffer, encoding="utf8");
+	if(this.connected){
+		var i = 0, n = 0;
+		var var_header = new Buffer(3+pub_topic.length);
+		
+		//Variable header
+		//Assume payload length no longer than 128
+		var_header[i++] = 0;
+		var_header[i++] = pub_topic.length;
+		for (n = 0; n < pub_topic.length; n++) {
+			var_header[i++] = pub_topic.charCodeAt(n);
+		}
+		var_header[i++] = 0;
+		
+		i = 0;
+		var buffer = new Buffer(2+var_header.length+payload.length);
+		
+		//Fix header
+		buffer[i++] = MQTTPUBLISH;
+		buffer[i++] = payload.length + var_header.length;
+	
+		for (n = 0; n < var_header.length; n++) {
+			buffer[i++] = var_header[n];
+		}
+		for (n = 0; n < payload.length; n++) { //Insert payloads
+			buffer[i++] = payload.charCodeAt(n);
+		}
+		
+		sys.puts("||Publish|| "+pub_topic+' : '+payload);
+		
+		this.conn.write(buffer, encoding="utf8");
+		
+		//reset timer
+		var cc = this;
+		clearTimeout(this.timeout);
+		this.timeout = setTimeout(function() {
+			cc.timeUp();
+		}, 25000);
+    }
 };
 
-onData = function(data){
+MQTTClient.prototype.onData = function(data){
     var type = data[0]>>4;
-    sys.puts('\n0:'+type);
-    sys.puts('1:'+data[1]);
-    sys.puts('2:'+data[2]);
-    sys.puts('3:'+data[3]);
+    //sys.puts('\ntype:'+type);
+    //sys.puts('1:'+data[1]);
+    //sys.puts('2:'+data[2]);
+    //sys.puts('3:'+data[3]);
     if (type == 3) { // PUBLISH
         var tl = data[3]+data[2]; //<<4
         sys.puts(tl);
@@ -187,29 +234,47 @@ onData = function(data){
             var payload = data.slice(tl+4, data.length);
             sys.puts("Receive on Topic:"+topic);
             sys.puts("Payload:"+payload+'\n');
+            
+            this.emit("mqttData", topic, payload);
         }
     } else if (type == 12) { // PINGREG -- Ask for alive
         //Send [208, 0] to server
-        this.conn.write(0xd0, encoding="utf8");
-        this.conn.write(0x00, encoding="utf8");
         sys.puts('Send 208 0');
-        var packet208 = '';
+        var packet208 = new Buffer(2);
         packet208[0] = 0xd0;
         packet208[1] = 0x00;
+        
         this.conn.write(packet208, encoding="utf8");
-        //lastActivity = timer.read_ms();
+        
+        //reset timer
+        var cc = this;
+        clearTimeout(this.timeout);
+        this.timeout = setTimeout(function() {
+            cc.timeUp();
+        }, 25000);
     }
-
 }
 
 MQTTClient.prototype.live = function () {
 	//Send [192, 0] to server
-	this.conn.write(0xc0, encoding="utf8");
-	this.conn.write(0x00, encoding="utf8");
+    var packet192 = new Buffer(2);
+    packet192[0] = 0xc0;
+    packet192[1] = 0x00;
+    this.conn.write(packet192, encoding="utf8");
+    
+    //reset timer
+    var cc = this;
+    clearTimeout(this.timeout);
+    this.timeout = setTimeout(function() {
+        cc.timeUp();
+        //self.publish('node', 'hello wtf');
+    }, 25000); //send keepavie every 25s
 };
 
 MQTTClient.prototype.disconnect = function () {
 	//Send [224,0] to server
-	this.conn.write(0xe0, encoding="utf8");
-	this.conn.write(0x00, encoding="utf8");
+    var packet224 = new Buffer(2);
+    packet224[0] = 0xe0;
+    packet224[1] = 0x00;
+    this.conn.write(packet224, encoding="utf8");
 };
