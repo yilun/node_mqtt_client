@@ -4,3 +4,38 @@ The lib is still under developing.
 
 Author: FAN Yilun @ CEIT
 
+
+API
+
+Event: ‘sessionOpened’
+Fired when a session with broker is opened sucesffully.
+
+Event: ‘mqttData’
+Fired when data is available for client, topic and payload have been extracted from data.
+client.addListener(‘mqttData’, function(topic, payload){
+
+});
+
+Event: ‘openSessionFailed’
+Fired when a session can not be established.
+
+Event: ‘connectTimeOut’
+Fired when cant establish a connection with server.
+
+MQTTClient(port, host, clientID);
+Construct a instance of mqtt client.
+@port: port number, like 1883.
+@host: server ip address.
+@clientID: client name for server.
+
+subscribe(sub_topic);
+Subscribe to a topic.
+@sub_topic: topic to be subscribed.
+
+publish(pub_topic, msg);
+Publish messages to a topic.
+@pub_topic: publish topics.
+@msg: payload data, can be anything, string, bytes.
+
+disconnect();
+Disconnect with server.
