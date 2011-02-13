@@ -13,8 +13,6 @@ var MQTTSUBSCRIBE = 0x80; //8<<4;
 var KEEPALIVE = 15000;
 
 //Testing
-//204.146.213.96
-//127.0.0.1
 //var client = Client(1883, '127.0.0.1', 'mirror'); 
 
 function MQTTClient(port, host, clientID) {
@@ -178,42 +176,42 @@ MQTTClient.prototype.subscribe = function (sub_topic) {
 MQTTClient.prototype.publish = function (pub_topic, payload) {
 	
 	if(this.connected){
-		var i = 0, n = 0;
-		var var_header = new Buffer(3+pub_topic.length);
-		
-		//Variable header
-		//Assume payload length no longer than 128
-		var_header[i++] = 0;
-		var_header[i++] = pub_topic.length;
-		for (n = 0; n < pub_topic.length; n++) {
-			var_header[i++] = pub_topic.charCodeAt(n);
-		}
-		var_header[i++] = 0;
-		
-		i = 0;
-		var buffer = new Buffer(2+var_header.length+payload.length);
-		
-		//Fix header
-		buffer[i++] = MQTTPUBLISH;
-		buffer[i++] = payload.length + var_header.length;
+	var i = 0, n = 0;
+    var var_header = new Buffer(3+pub_topic.length);
+    
+    //Variable header
+	//Assume payload length no longer than 128
+    var_header[i++] = 0;
+    var_header[i++] = pub_topic.length;
+	for (n = 0; n < pub_topic.length; n++) {
+		var_header[i++] = pub_topic.charCodeAt(n);
+    }
+	var_header[i++] = 0;
+    
+	i = 0;
+    var buffer = new Buffer(2+var_header.length+payload.length);
+    
+	//Fix header
+	buffer[i++] = MQTTPUBLISH;
+	buffer[i++] = payload.length + var_header.length;
+
+	for (n = 0; n < var_header.length; n++) {
+		buffer[i++] = var_header[n];
+    }
+	for (n = 0; n < payload.length; n++) { //Insert payloads
+		buffer[i++] = payload.charCodeAt(n);
+    }
+    
+    sys.puts("||Publish|| "+pub_topic+' : '+payload);
 	
-		for (n = 0; n < var_header.length; n++) {
-			buffer[i++] = var_header[n];
-		}
-		for (n = 0; n < payload.length; n++) { //Insert payloads
-			buffer[i++] = payload.charCodeAt(n);
-		}
-		
-		sys.puts("||Publish|| "+pub_topic+' : '+payload);
-		
-		this.conn.write(buffer, encoding="utf8");
-		
-		//reset timer
-		var cc = this;
-		clearTimeout(this.timeout);
-		this.timeout = setTimeout(function() {
-			cc.timeUp();
-		}, 25000);
+    this.conn.write(buffer, encoding="ascii");
+    
+    //reset timer
+    var cc = this;
+    clearTimeout(this.timeout);
+    this.timeout = setTimeout(function() {
+        cc.timeUp();
+    }, 25000);
     }
 };
 
@@ -231,7 +229,7 @@ MQTTClient.prototype.onData = function(data){
             topic[i] = data[i+4];
         }
         if(tl+4 <= data.length){
-            var payload = data.slice(tl+4, data.length);
+            var payload = data.slice(tl+5, data.length);
             sys.puts("Receive on Topic:"+topic);
             sys.puts("Payload:"+payload+'\n');
             
